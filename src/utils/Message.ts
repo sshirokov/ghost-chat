@@ -39,19 +39,38 @@ export default class Message {
         this.bttvGlobalEmotes[emote.code] = emote.id;
       });
     }
+
+    if (Object.keys(this.bttvChannelEmotes).length === 0 && channelId !== null) {
+      const channelEmoteURL = `https://api.betterttv.net/3/cached/users/twitch/${channelId}`;
+      const channelEmoteInfo = await fetch(channelEmoteURL)
+        .then((res) => res.json())
+        .catch((e) => {
+          // TODO(sshirokov): Same as global :(
+          console.error('Failed to load BTTV Channel Emotes', e);
+          return {};
+        });
+
+      channelEmoteInfo.channelEmotes?.forEach((emote) => {
+        this.bttvChannelEmotes[emote.code] = emote.id;
+      });
+      channelEmoteInfo.sharedEmotes?.forEach((emote) => {
+        this.bttvChannelEmotes[emote.code] = emote.id;
+      });
+    }
   }
 
   private formatBTTVEmotes(message: string): string {
     const emojiUrlTemplate =
       '<img alt="emote" class="emotes align-middle" src="https://cdn.betterttv.net/emote/%BTTVID%/1x" />';
+    function escapeRegExp(string) {
+      // Directly out of MDN lmao
+      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+    }
+    const codeToRegex = (code) => new RegExp(`(^|[^\w])${escapeRegExp(code)}([^\w]|$)`, 'g');
 
     Object.keys(this.bttvGlobalEmotes).forEach((code) => {
-      function escapeRegExp(string) {
-        // Directly out of MDN lmao
-        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
-        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
-      }
-      const codeRegex = new RegExp(`[^\w]${escapeRegExp(code)}[^\w]`, 'g');
+      const codeRegex = codeToRegex(code);
 
       message = message.replace(
         codeRegex,
@@ -59,23 +78,42 @@ export default class Message {
       );
     });
 
+    Object.keys(this.bttvChannelEmotes).forEach((code) => {
+      const codeRegex = codeToRegex(code);
+
+      message = message.replace(
+        codeRegex,
+        emojiUrlTemplate.replace('%BTTVID%', this.bttvChannelEmotes[code]),
+      );
+    });
+
     return message;
   }
 
   public async formatMessage(message: string, userstate: ChatUserstate): Promise<string> {
-    const emotes: { [p: string]: string[] } | undefined = userstate?.emotes;
-    return new Promise((resolve) => {
-      const img =
-        '<img alt="emote" class="emotes align-middle" src="https://static-cdn.jtvnw.net/emoticons/v1/item/2.0" />';
-      const result = {};
+    const twitchEmotes: { [p: string]: string[] } | undefined = userstate?.emotes;
 
-      if (emotes) {
+    // Update BTTV Emotes if we haven't. We need to do this at least once when we get a message
+    // because we need the numeric room id of the channel, and the userstate brings that in
+    //
+    // TODO(sshirokov): There's like, a very good chance we can do this lookup ahead of time on connect
+    //                  just gotta find an endpoint that can exchange a channel name for a channel id
+    if (Object.keys(this.bttvChannelEmotes).length === 0) {
+      await this.fetchBTTVEmotes(userstate['room-id']);
+    }
+
+    return new Promise((resolve) => {
+      if (twitchEmotes) {
+        const img =
+          '<img alt="emote" class="emotes align-middle" src="https://static-cdn.jtvnw.net/emoticons/v1/item/2.0" />';
+        const result = {};
+
         // go through each emote
-        Object.keys(emotes).forEach((key) => {
+        Object.keys(twitchEmotes).forEach((key) => {
           // same emotes are stored in on key
-          Object.keys(emotes[key]).forEach((range) => {
+          Object.keys(twitchEmotes[key]).forEach((range) => {
             // grab the emote range and split it to two keys
-            const emoteCoordinates = emotes[key][range].split('-');
+            const emoteCoordinates = twitchEmotes[key][range].split('-');
 
             const substringFrom = parseInt(emoteCoordinates[0], 10);
             let substringTo: number;
