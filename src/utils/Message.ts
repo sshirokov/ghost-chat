@@ -64,7 +64,7 @@ export default class Message {
       '<img alt="emote" class="emotes align-middle" src="https://cdn.betterttv.net/emote/%BTTVID%/1x" />';
     function escapeRegExp(string) {
       // Directly out of MDN lmao
-      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
+      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions#escaping
       return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
     }
     const codeToRegex = (code) => new RegExp(`(^|[^\w])${escapeRegExp(code)}([^\w]|$)`, 'g');
