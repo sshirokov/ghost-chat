@@ -168,6 +168,7 @@ export default class Chat extends Vue {
         throw new Error(`Failed to connect to channel ${this.broadCaster}: ${err}`);
       });
 
+      // Try (and silently fail if needed) to fetch BTTV Global emotes
       await this.message.fetchBTTVEmotes();
 
       this.isLoading = false;

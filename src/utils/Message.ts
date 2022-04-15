@@ -15,7 +15,7 @@ export default class Message {
     this.channelBadgeList = [];
     this.badgeList = [];
 
-    // "string" => "stringID"
+    // Mappings of the emote code (e.g. ":tf:", "NODDERS", etc) to the ID that can be put into a CDN URL
     this.bttvGlobalEmotes = {};
     this.bttvChannelEmotes = {};
   }
