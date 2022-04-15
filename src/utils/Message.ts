@@ -7,35 +7,113 @@ export default class Message {
 
   private badgeList: any;
 
+  private bttvGlobalEmotes: any;
+
+  private bttvChannelEmotes: any;
+
   constructor() {
     this.channelBadgeList = [];
     this.badgeList = [];
+
+    // Mappings of the emote code (e.g. ":tf:", "NODDERS", etc) to the ID that can be put into a CDN URL
+    this.bttvGlobalEmotes = {};
+    this.bttvChannelEmotes = {};
   }
 
   private async fetchFFZEmotes(): Promise<void> {
     // TODO: emote list to long, think about how to pre fetch the data
   }
 
-  private async fetchBTTVEmotes(): Promise<void> {
-    // TODO: check if we can somehow use their api, no official documentation for it sadly
+  public async fetchBTTVEmotes(channelId: any = null): Promise<void> {
+    if (Object.keys(this.bttvGlobalEmotes).length === 0) {
+      const globalBTTVEmoteUrl = 'https://api.betterttv.net/3/cached/emotes/global';
+      const globalEmotesArray = await fetch(globalBTTVEmoteUrl)
+        .then((res) => res.json())
+        .catch((e) => {
+          // TODO(sshirokov): There's no *great* place to put this error, since the caller will clear
+          //                  the screen after this returns to wait for messages.
+          console.error('Failed to load BTTV Global Emotes', e);
+          return [];
+        });
+      globalEmotesArray.forEach((emote) => {
+        this.bttvGlobalEmotes[emote.code] = emote.id;
+      });
+    }
+
+    if (Object.keys(this.bttvChannelEmotes).length === 0 && channelId !== null) {
+      const channelEmoteURL = `https://api.betterttv.net/3/cached/users/twitch/${channelId}`;
+      const channelEmoteInfo = await fetch(channelEmoteURL)
+        .then((res) => res.json())
+        .catch((e) => {
+          // TODO(sshirokov): Same as global :(
+          console.error('Failed to load BTTV Channel Emotes', e);
+          return {};
+        });
+
+      channelEmoteInfo.channelEmotes?.forEach((emote) => {
+        this.bttvChannelEmotes[emote.code] = emote.id;
+      });
+      channelEmoteInfo.sharedEmotes?.forEach((emote) => {
+        this.bttvChannelEmotes[emote.code] = emote.id;
+      });
+    }
   }
 
-  public async formatMessage(
-    message: string,
-    emotes: { [p: string]: string[] } | undefined,
-  ): Promise<string> {
-    return new Promise((resolve) => {
-      const img =
-        '<img alt="emote" class="emotes align-middle" src="https://static-cdn.jtvnw.net/emoticons/v1/item/2.0" />';
-      const result = {};
+  private formatBTTVEmotes(message: string): string {
+    const emojiUrlTemplate =
+      '<img alt="emote" class="emotes align-middle" src="https://cdn.betterttv.net/emote/%BTTVID%/1x" />';
+    function escapeRegExp(string) {
+      // Directly out of MDN lmao
+      // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions#escaping
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+    }
+    const codeToRegex = (code) => new RegExp(`(^|[^\w])${escapeRegExp(code)}([^\w]|$)`, 'g');
 
-      if (emotes) {
+    Object.keys(this.bttvGlobalEmotes).forEach((code) => {
+      const codeRegex = codeToRegex(code);
+
+      message = message.replace(
+        codeRegex,
+        emojiUrlTemplate.replace('%BTTVID%', this.bttvGlobalEmotes[code]),
+      );
+    });
+
+    Object.keys(this.bttvChannelEmotes).forEach((code) => {
+      const codeRegex = codeToRegex(code);
+
+      message = message.replace(
+        codeRegex,
+        emojiUrlTemplate.replace('%BTTVID%', this.bttvChannelEmotes[code]),
+      );
+    });
+
+    return message;
+  }
+
+  public async formatMessage(message: string, userstate: ChatUserstate): Promise<string> {
+    const twitchEmotes: { [p: string]: string[] } | undefined = userstate?.emotes;
+
+    // Update BTTV Emotes if we haven't. We need to do this at least once when we get a message
+    // because we need the numeric room id of the channel, and the userstate brings that in
+    //
+    // TODO(sshirokov): There's like, a very good chance we can do this lookup ahead of time on connect
+    //                  just gotta find an endpoint that can exchange a channel name for a channel id
+    if (Object.keys(this.bttvChannelEmotes).length === 0) {
+      await this.fetchBTTVEmotes(userstate['room-id']);
+    }
+
+    return new Promise((resolve) => {
+      if (twitchEmotes) {
+        const img =
+          '<img alt="emote" class="emotes align-middle" src="https://static-cdn.jtvnw.net/emoticons/v1/item/2.0" />';
+        const result = {};
+
         // go through each emote
-        Object.keys(emotes).forEach((key) => {
+        Object.keys(twitchEmotes).forEach((key) => {
           // same emotes are stored in on key
-          Object.keys(emotes[key]).forEach((range) => {
+          Object.keys(twitchEmotes[key]).forEach((range) => {
             // grab the emote range and split it to two keys
-            const emoteCoordinates = emotes[key][range].split('-');
+            const emoteCoordinates = twitchEmotes[key][range].split('-');
 
             const substringFrom = parseInt(emoteCoordinates[0], 10);
             let substringTo: number;
@@ -61,6 +139,8 @@ export default class Message {
           message = message.replace(new RegExp(escaped, 'g'), result[key]);
         });
       }
+
+      message = this.formatBTTVEmotes(message);
 
       resolve(message);
     });
