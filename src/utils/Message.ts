@@ -7,23 +7,63 @@ export default class Message {
 
   private badgeList: any;
 
+  private bttvGlobalEmotes: any;
+
+  private bttvChannelEmotes: any;
+
   constructor() {
     this.channelBadgeList = [];
     this.badgeList = [];
+
+    // "string" => "stringID"
+    this.bttvGlobalEmotes = {};
+    this.bttvGlobalEmotes = {};
   }
 
   private async fetchFFZEmotes(): Promise<void> {
     // TODO: emote list to long, think about how to pre fetch the data
   }
 
-  private async fetchBTTVEmotes(): Promise<void> {
-    // TODO: check if we can somehow use their api, no official documentation for it sadly
+  public async fetchBTTVEmotes(channelId: any = null): Promise<void> {
+    if (Object.keys(this.bttvGlobalEmotes).length === 0) {
+      const globalBTTVEmoteUrl = 'https://api.betterttv.net/3/cached/emotes/global';
+      const globalEmotesArray = await fetch(globalBTTVEmoteUrl)
+        .then((res) => res.json())
+        .catch((e) => {
+          // TODO(sshirokov): There's no *great* place to put this error, since the caller will clear
+          //                  the screen after this returns to wait for messages.
+          console.error('Failed to load BTTV Global Emotes', e);
+          return [];
+        });
+      globalEmotesArray.forEach((emote) => {
+        this.bttvGlobalEmotes[emote.code] = emote.id;
+      });
+    }
   }
 
-  public async formatMessage(
-    message: string,
-    emotes: { [p: string]: string[] } | undefined,
-  ): Promise<string> {
+  private formatBTTVEmotes(message: string): string {
+    const emojiUrlTemplate =
+      '<img alt="emote" class="emotes align-middle" src="https://cdn.betterttv.net/emote/%BTTVID%/1x" />';
+
+    Object.keys(this.bttvGlobalEmotes).forEach((code) => {
+      function escapeRegExp(string) {
+        // Directly out of MDN lmao
+        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Guide/Regular_Expressions
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // $& means the whole matched string
+      }
+      const codeRegex = new RegExp(`[^\w]${escapeRegExp(code)}[^\w]`, 'g');
+
+      message = message.replace(
+        codeRegex,
+        emojiUrlTemplate.replace('%BTTVID%', this.bttvGlobalEmotes[code]),
+      );
+    });
+
+    return message;
+  }
+
+  public async formatMessage(message: string, userstate: ChatUserstate): Promise<string> {
+    const emotes: { [p: string]: string[] } | undefined = userstate?.emotes;
     return new Promise((resolve) => {
       const img =
         '<img alt="emote" class="emotes align-middle" src="https://static-cdn.jtvnw.net/emoticons/v1/item/2.0" />';
@@ -61,6 +101,8 @@ export default class Message {
           message = message.replace(new RegExp(escaped, 'g'), result[key]);
         });
       }
+
+      message = this.formatBTTVEmotes(message);
 
       resolve(message);
     });

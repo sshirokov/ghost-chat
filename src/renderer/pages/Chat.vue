@@ -168,6 +168,8 @@ export default class Chat extends Vue {
         throw new Error(`Failed to connect to channel ${this.broadCaster}: ${err}`);
       });
 
+      await this.message.fetchBTTVEmotes();
+
       this.isLoading = false;
 
       // Only show the waiting for messages prompt for a bit
@@ -186,9 +188,9 @@ export default class Chat extends Vue {
         if (userstate.badges !== null) {
           badges = await this.message.getUserBadges(userstate);
         }
-        if (userstate.emotes !== null) {
-          message = await this.message.formatMessage(message, userstate.emotes);
-        }
+
+        message = await this.message.formatMessage(message, userstate);
+
         this.addMessage(userstate, message, badges);
       });
     } else {
