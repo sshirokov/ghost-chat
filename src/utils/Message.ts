@@ -17,7 +17,7 @@ export default class Message {
 
     // "string" => "stringID"
     this.bttvGlobalEmotes = {};
-    this.bttvGlobalEmotes = {};
+    this.bttvChannelEmotes = {};
   }
 
   private async fetchFFZEmotes(): Promise<void> {
